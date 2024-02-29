@@ -1,0 +1,266 @@
+CKA:  udemystudent151113
+
+
+Master node : ETCD : is a database that stores information in a key-value format
+kube-scheduler : identifies the right node where a container can be placed based on container requirement
+node-controller : controls the nodes handles the node availability or any other node related issues
+Replication Controller : it handles the desired no of containers are available and running 
+Kube- api server : for the communication between cluster components and it exposes the kube api for external user to access 
+it periodically fetches the status report from kubelet to monitor the status of the nodes and containers
+CRE : Docker, ContainerD, RKT
+Kubelet : is an agent that runs on each node to manage the applications running in an node. follows the instructions of Kube api server and deploys and destroys the containers on nodes as required 
+kube- proxy : communication between the worker nodes can be enabled it allows necessary rules to place on a node so that each worker node can communicate with each other
+
+ETCD:
+run as an executable service : ETCD server and ETCDctl which interacts with server 
+default port : 2379
+create an entry in the database using key value pair (etcd client stores and retrives info)
+./etcdctl set key1 value1
+
+ETCDCTL is the CLI tool used to interact with ETCD.
+
+ETCDCTL can interact with ETCD Server using 2 API versions - Version 2 and Version 3.  By default its set to use Version 2. Each version has different sets of commands.
+
+For example ETCDCTL version 2 supports the following commands:
+
+etcdctl backup
+etcdctl cluster-health
+etcdctl mk
+etcdctl mkdir
+etcdctl set
+
+
+Whereas the commands are different in version 3
+
+etcdctl snapshot save 
+etcdctl endpoint health
+etcdctl get
+etcdctl put
+
+To set the right version of API set the environment variable ETCDCTL_API command
+
+export ETCDCTL_API=3
+
+to install etcdctl
+
+apt-get install etcd-client
+
+
+
+When API version is not set, it is assumed to be set to version 2. And version 3 commands listed above don't work. When API version is set to version 3, version 2 commands listed above don't work.
+
+
+
+Apart from that, you must also specify path to certificate files so that ETCDCTL can authenticate to the ETCD API Server. The certificate files are available in the etcd-master at the following path. We discuss more about certificates in the security section of this course. So don't worry if this looks complex:
+
+--cacert /etc/kubernetes/pki/etcd/ca.crt     
+--cert /etc/kubernetes/pki/etcd/server.crt     
+--key /etc/kubernetes/pki/etcd/server.key
+
+
+So for the commands I showed in the previous video to work you must specify the ETCDCTL API version and path to certificate files. Below is the final form:
+
+
+
+kubectl exec etcd-master -n kube-system -- sh -c "ETCDCTL_API=3 etcdctl get / --prefix --keys-only --limit=10 --cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt  --key /etc/kubernetes/pki/etcd/server.key"
+
+Kube-API server : 
+Authenticating and Validating the request/user
+retriving and updating the info in ETCD server 
+communicate with Kube-scheduler for the request
+Interact with Kubelet so that kubelet works 
+
+**** Kubelet must manually install on the worker node and cannot be installed using Kubeadm***
+
+Daemonsets : make sure one copy of a pod runs in every node. Kube-proxy can be deployed as a daemonset
+similar to replicaset
+
+Static Pods: When its a single node cluster which doesnt have any master node and its components, Kubelet still create pod by the following way 
+we can place pod manifest file in defined directory /etc/kubernetes/manifests/***
+Using these manifests files Kubelet creates the pod and runs the node
+
+
+***Encrypting secret data at Rest (kubernetes.io)
+
+Have an Encryption configuration yaml file and then enable in kube-api server
+ 
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+      - configmaps
+      - pandas.awesome.bears.example # a custom resource API
+    providers:
+      # This configuration does not provide data confidentiality. The first
+      # configured provider is specifying the "identity" mechanism, which
+      # stores resources as plain text.
+      #
+      - identity: {} # plain text, in other words NO encryption
+      - aesgcm:
+          keys:
+            - name: key1
+              secret: c2VjcmV0IGlzIHNlY3VyZQ==
+            - name: key2
+              secret: dGhpcyBpcyBwYXNzd29yZA==
+      - aescbc:
+          keys:
+            - name: key1
+              secret: c2VjcmV0IGlzIHNlY3VyZQ==
+            - name: key2
+              secret: dGhpcyBpcyBwYXNzd29yZA==
+      - secretbox:
+          keys:
+            - name: key1
+              secret: YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+  
+***Set the --encryption-provider-config flag on the kube-apiserver
+
+
+cluster Upgrade :
+
+if Kube-apiserver is (x) kubecontroller and kube scheduler should be x to x-1 versions and kubelete,kube-proxy should be x to x-2 versions. None of them should be any version higher than kube-api server
+
+if cluster components are installed using kubeadm then we can upgrade easily by running kubeadm commands but first upgrade kubeadm tool itself (MASTER)
+to find which OS is installed 
+
+cat /etc/*release*
+
+kubeadm upgrade plan
+***apt-get upgrade -y kubeadm=1.28.0-00
+kubeadm upgrade apply v1.28.0
+
+upgrade the kubelet using apt-get again 
+apt-get upgrade -y kubelet=1.28.0-00
+
+once upgraded we must restart the kubelet componenet systemctl daemon-reload
+systemctl restart kubelet
+
+WORKER
+
+first drain the node the apply the upgrade procedure (SSH NODE)
+kubectl drain node (make sure you are draining conytrolplane node so come back from the node)
+apt-get upgrade kubeadm=1.28.0-00
+apt-get upgrade -y kubelet=1.28.0-00
+kubeadm upgrade node config --kubelet-version v1.28.0
+systemctl restart kubelet
+
+
+Backup and Restore : backup can be done by querying the kube api server
+
+Resource config: k get all --all-namespaces -o yaml > allresources.yaml
+or any backup tool such as VELERO
+
+ETCD server : the ETCD key-value database is deployed as a static pod on the master. The version used is v3.
+
+To make use of etcdctl for tasks such as back up and restore, make sure that you set the ETCDCTL_API to 3.
+
+in etcd configuration file we specify path where all the data is stored
+--data-dir=/var/lib/etcd
+can be backed up by the back up tool
+
+or we can save the etcd data through a snapshot in etcdctl utility
+ETCDCTL_API=3 etcdctl
+snapshot save snapshotdata.db
+
+to restore first stop the kube-apiserver then restore the snapshot
+service kube-apiserver stop
+ETCDCTL_API=3 etcdctl
+snapshot restore snapshotdata.db
+--data-dir=/var/lib/etcd
+
+AUTHENTICATION:
+Admins, developers, end users and 3rd party servers(sa) have to access the cluster
+whenever a user makes a req kube-api server validates the req using the file that stored in kube-apiserver 
+enable access to file in kube-apiserver manifest as 
+--basic-auth-file=user-details.csv
+Once created, you may authenticate into the kube-api server using the users credentials
+curl -v -k https://localhost:6443/api/v1/pods -u "user1:password123" 
+
+user password and details can be stored in static password file, instead of password we can use a token called static token file, pass the token file as 
+--token-auth-file=user-token-details.csv
+
+
+TLS Certificates :
+================
+Symmetric encryption : user information is encrypted or decrypted while accesing the webserver and a key is passed access the user data. the same key is passed for both encryption and decryption is called symmetric
+Asymmetric : it uses a pair of keys called private key and public lock(key). so a user can generate both keys and while accessing he can create his own public lock for the server he is accessing and can only access the server with the key that he generated. other users can find the public lock but cant access without a private key.
+
+ssh-keygen and openssl command is used to create both keys
+when you run ssh-keygen it will generate two keys as id_rsa and id_rsa.pub
+public key has .pem or .crt extension
+private key has .key or -key.pem extension
+
+in KUbernetes cluster 
+KubeAPI Server one public key apiserver.crt and one private key apiserver.key 
+ETCD server etcdserver.crt and etcdserver.key
+Kubelete server kubelet.crt and kubelet.key
+
+the client we access these servers also has one pair of public and private key to access they are
+admin useres(REST API) to access KubeAPI has admin.crt and admin.key
+kube-scheduler is a client that ineteracts with kube-api so it has scheduler.crt and scheduler.key
+kube-controller manager controller-manager.crt controller-manager.key
+kube-proxy kube-proxy.crt and kube-proxy.key
+kubelet that ineteracts with kubeAPI can its original server certificates or can generate a new pair for the communication kubelet.crt and kubelet.key
+
+we need a certificate authority to generate and sign all these certificates (CA)we can have more than one for for all these components. one for all components and another specifically for etcd
+CA has its own pair of certificates ca.crt and ca.key
+
+how to generate certificates 
+------------------------------
+using OPENSSL :
+to generate keys: openssl genrsa -out ca.key 2048 
+ca.key
+
+for certificate signing request : openssl req -new -key ca.key -subj "/CN=KUBERNETES-CA" -out ca.csr
+ca.csr
+
+for sign certificates openssl x509 -req -in ca.csr -signkey ca.key -out ca.crt
+ca.crt
+
+in Kubernetes you can generate a certificate signing request as a manifest file and administartors validates the req then approve using kubectl cmds
+
+kubectl get csr
+
+validates then 
+ kubectl certificate approve csr-name 
+
+------------------------------------------------------------------------------------
+
+Switch Routing:
+
+route
+command will display the Kernel IP table
+
+ip route add 192.168,0,1/24 via 192.168.1.1 (to add gateway entries to the ip table)
+
+route
+kernel ip routing table
+destination     gateway     genmask        flags metric ref use Iface
+192.168.0.1    192.168.1.1  255.255.255.0    UG   0      0   0   eth0
+
+ip link
+ip addr
+ip addr add 192.168.1.1/24 dev eth0
+ip route 
+ip route add 192.168,0,1/24 via 192.168.1.1
+cat /proc/sys/net/ipv4/ip_forward
+will display 0 (by default ip forward is set 0)
+to enable ip forwarding set it to 1
+
+-------------------------------------------------------------------------------
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+

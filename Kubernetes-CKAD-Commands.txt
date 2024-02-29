@@ -1,0 +1,631 @@
+to install etcd : app-get install etcd-client
+
+k get all -A
+
+kubectl run podname --image=imagename -o yaml > pod.yaml
+k get pod -o yaml > pod.yaml
+k create -f deployment --dry-run=client --image=imagename
+kubectl exec podname -it -- (to get into a container)
+to decode an encrypted secret : echo "encoded secret" | base64 --decode
+
+Security context to add at pod level :
+apiVersion :v1
+kind: pod
+metadata:
+  name: podname
+spec:
+  securityContext:
+    runAsUser: username
+    capabilities:
+      add: ["MAC_ADMIN"]
+  containers:
+    - name : ubuntu
+      image: ubuntu
+      command: ["sleep, 3000"]
+
+:- What is the user used to execute the sleep process within the ubuntu-sleeper pod?
+kubectl exec ubuntu-sleeper -- whoami
+ 
+:----- when the edited pod saved to temporary file
+     k replace --force -f /tmp/kubectl-edit-272515.yaml (temporary location)
+
+To add a service account 
+apiVersion :v1
+kind: pod
+metadata:
+  name: podname
+spec:
+  securityContext:
+    runAsUser: username
+    capabilities:
+      add: ["MAC_ADMIN"]
+  containers:
+    - name : ubuntu
+      image: ubuntu
+      command: ["sleep, 3000"]
+  serviceAccountname: dashboard-sa
+
+to apply taints to a node : kubectl taint nodes nodename key=value:taint-effect
+kubectl taint nodes node1 app=app1:NoSchedule (NoSchuedule, preferNoSchedule, NoExecute)
+Tolerations: added to pod 
+apiVersion: V1
+kind: pod
+metadata:
+  name: myapp-pod
+spec:
+  containers:
+  - name: nginx-containert
+    image: nginx
+   tolerations:
+   - key: "app"
+     operator: "Equal"
+     value: "app1"
+     effect: "NoSchedule"
+
+to untaint a node : kubectl taint nodes node1 app=app1:NoSchedule-
+to label a node : kubectl label nodes node1 key=value
+node affinity:nodeSelector
+
+spec:
+  affinity:
+    nodeaffinity:
+      requiredDuringSchedulingIgnoreDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: size
+            operator: In
+            values:
+              - Large
+
+
+
+
+readinessProbe:     |   readinessProbe:
+  httpGet:          |     tcpSocket:
+    path:           |       port:
+    port:           |
+
+and execute a command use exec as an array option
+readinessProbe:
+  exec:
+    command:
+      - cat
+      - /opt/app.log 
+
+livenessProbe:     |   livenessProbe:
+  httpGet:          |     tcpSocket:
+    path:           |       port:
+    port:           |
+
+and execute a command use exec as an array option
+livenessProbe:
+  exec:
+    command:
+      - cat
+      - /opt/app.log 
+
+kubectl top node   } to view the performance metrics of pods and nodes 
+kubectl top pod 
+
+
+kubectl get pods --selector app=app1
+
+--------------------------------
+
+jobs:
+
+in pod-definition file use option command to add a job
+ or create a job definition file 
+apiVersion: v1
+kind: job
+metadata:
+  name: job1
+spec:
+  template:
+    spec:
+      containers:
+        - name: app-pod                    ( add pod spec in job-definition file)
+          image: nginx
+          command: [ 'expr','3','+','2']
+
+------------------------------------------
+
+
+Nodeport: service can map a communication between pods, it maps a port on the node to port on the pod 
+service.definition.yaml
+apiVersion: v1
+kind: Service
+metadata: 
+  name: service1
+  labels: service
+spec:
+  type: NodePort
+  ports: 
+    targetPort: 80
+    port : 80 (port on the service object)
+    nodePort: 30008  nodeport range: (30000-32767)
+  selector:
+    app: app-pod
+    type: front-end
+    tier: bu
+we can access the webportal using curl command
+curl http://192.168.0.1:30008
+
+----------------------------------------
+
+ClusterIP: Kubernetes service groups set of pods and provide an interface to access the pods, the reqs are sent randomly to the pods 
+loadbalancer : using it service routes traffic to a particular pod.. it has an external ip that can be provided to users to access the applications and
+               dns points to this loadbalancer's ip
+Ingress: ingress helps users to access ur applications using in a single externally accessible url that you can configure to routes to different services 
+         within a cluster based on the url path at the same time it implements ssl security
+ingress controllers: GCE, Nginx. HAProxy, istio
+ingress controller requires a deployment file with ingress configuration and a configmap to hold the config data of ingress controller, a service to expose
+it to outside and a service acc(Auth) to give right permissions
+ingress controller should be deployed.. in a simple deployment file add ingress specification in a template and must pass the arguements to start the ingress controller
+
+apiVersion: v1
+kind: Deployment
+metadata:
+  lables:
+  - name: nginx-ingress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: nginx-ingress
+  template:
+    containers:
+    - name: nginx-ingress-controller
+      image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.321.o
+    args:
+      - /nginx-ingress-controller
+      - --configmap=$(POD_NAMESPACE)/nginx-configuration
+    env:
+      - name: POD_NAME
+        valueFrom:
+          fieldRef:
+             fieldPath: metadata.name
+      - name: POD_NAMESPACE
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.namespace
+     ports:
+       - name: http
+         containerPort: 80
+       - name: https:
+         containerport: 443
+
+
+configmap:
+apiVersion: v1
+kind: ConfigMap
+metadata: 
+  name: nginx-configuration
+
+
+we then need a service to expose ingress to outside
+
+apiVersion: v1
+kind: Service
+metadata:
+  lables:
+  - name : nginx-ingress
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+    name: http
+  - port: 443
+    pootocol: TCP
+    targetPort: 443
+    name: https
+  selector:
+    name: nginx-ingress
+
+we then need a service account to give permisions, roles and role bindings
+
+apiVersion: v1
+kind: ServiceAccount
+metadta:
+  name: naginx-ingress-serviceaccount
+
+Ingress Resources: a set of rules and conditions to be applied on Ingress Controller
+to simply route traffic to a particular application
+
+Ingress resource to define in a definition file
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-resource
+spec:
+  backend:
+    serviceName: ingress-service
+    servicePort: 80
+--------------------------------------
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: test-ingress
+  namespace: critical-space
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /pay
+        backend:
+          serviceName: pay-service
+          servicePort: 8282
+
+kubectl create ingress <ingress-name> --rule="host/path=service:port"
+
+-----------------------------------------
+
+Volumes: (pod-definition.yaml)
+spec:
+  containers:
+  - image:nginx
+    name: nginx
+    command: ["/bin/sh","-c"]
+    args: ["shuf -i 0-100 -n 1 >> /opt/number.out:"]
+    volumeMounts:
+    - mountPath: /opt
+      name: data-volume
+ volumes:
+ - name: data-volume
+   hostPath:
+     path: /data
+     type: directory
+
+persistant volumes:
+
+apiVersion: v1
+kind: persistantvolume
+mettadata:
+   name: pv1
+spec: 
+  accessMode:
+    - ReadWriteOnce   (ReadWriteMany, ReadOnlyMany)
+  capacity:
+    storage: 1Gi
+---------------------------------------
+
+PVC:
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mypvc
+spec:
+  accessMode: 
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Mi
+
+k create -f pvc-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: nginx
+  name: nginx
+spec:
+  containers:
+  - image: nginx:alpine
+    name: nginx
+    resources: {}
+  volumeMounts:
+  - name: local-pvc
+    mountPath: /var/www/html
+  volumes:
+  - name: local-storage
+    persistentVolumeClaim:
+      claimName: local-pvc
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+~                        
+----------------------------
+
+Storage Class:
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: gp2
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+mountOptions:
+  - debug
+volumeBindingMode: Immediate
+
+--------------------------------------
+
+Stateful sets(similar to deployments): Manages the deployment and scaling of a set of Pods, 
+and provides guarantees about the ordering and uniqueness of these Pods.
+
+kubectl create -f statefulset-definition.yaml 
+
+note: statefulset reaquires a headless service name in its definition file
+kubectl scale statefuulset name --replicas=
+
+headless service:
+
+apiVersion:v1          
+kind: service
+metadata:
+  name: service-h
+spec:
+  ports:
+  - port: 8080
+  selector:
+    lables:
+      app: app1
+  clusterIP: None
+
+headless service in pod-definition file
+apiversion:v1
+kind: pod
+metadata:
+  name: mypod
+  labels:
+    app: app1
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+  subdomain: service-h
+  hostname: nginx-pod
+
+You must define a service name that you created for certain application in the statefulset definition file 
+storage class in statefulsets uses volumeClaimTemplate in pod definition file to define its storage class
+spec:
+  volumeClaimTemplate:
+  - metadata:
+      name: pv-volume
+    spec:
+      accessModes:
+      - ReadwriteOnce
+      storageClassName: storage-name
+      resources:
+        requests:
+          storage: 500Mi
+-------------------------------
+
+Network Policy:
+to restrict communication from certain pods to certain pods we apply policies
+Ingress : incoming traffic
+Egress: outgoing requests from a specific application
+
+apiVersion:
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+spec:
+  podSelector:
+    matchLabels:
+      role: db
+  policyTypes:
+  - Ingress:
+      ingress:
+      - from:
+        podSelector:
+          matchLabels:
+            name: pod-name
+         ports:
+         - protocol: TCP
+           port: 3306
+  - Egress
+      egress:
+      - to:
+        - ipBlock:
+            cidr: 10.0.0.0/24
+        ports:
+        - protocol: TCP
+          port: 5978
+
+docker commands:
+
+docker build -t appname .
+docker run -p 8282(hostport):8080(container port) appname
+
+kubeproxy is s proxy service that helps to connect between pods and services across cluster and nodes
+kubectl proxy is a http proxy service created by kube control utility to access the kube api server
+
+RBAC: 
+-------
+
+role based definition file 
+apiVersion: rbac.authorization.k8s.io/v1
+kind: role
+metadata:
+  name: developer
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list","get", "create", "update" "delete"]
+
+Role Bindings links a user object to a role
+
+apiVersion:rbac.authorization.k8.io/v1
+kind: RoleBinding
+metadata: 
+  name: devuser-developer-binding
+subjects:
+- kind: User
+  name: dev-user
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: developer
+  apiGroup: rbac.authorization.k8s.io
+
+
+to check a specified users have authorization use command
+kubectl auth can-i (create networkpolicies/create deployments etc)
+kubectl auth can-i create pods --as dev-user
+
+
+Admission Controllers: to enable or disable certain cluster related controllers in a kube-apiserver
+/etc/kubernetes/manifests/kube-apiserver
+( such as NamespaceAutoProvion, NamespaceLifecycle, DefaultStorageClass)
+
+kubectl ---> authentication----> authorization -----> admission controllers ----> task (create a pod, svc, deployments)
+mutating and validating webhook server validates the req
+
+deploy and configuring admission webhooks
+apiVersion: admissionregistration.k8s.io
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: "pod-policy.example.com"
+webhooks:
+- name: "pod-policy.example.com"
+  clientConfig: 
+    url: "https://external-server.example.com"
+                 or
+    service: 
+      namespece: "wehook-namespace"
+      name: "webhook-service"
+      caBundle: "Ci05Tn.....tLs0K"  ( certificate bundle for the communication bet api server and webhook)
+   rules"
+   - apiGroups: [""]
+     apiVersions: ["v1"]
+     operations: ["CREATE"]
+     resources: ["pods"]
+     scope: "namespaced"
+
+To identify the preferred version, run the following commands as follows :-
+
+root@controlplane:~# kubectl proxy 8001&
+root@controlplane:~# curl localhost:8001/apis/authorization.k8s.io
+
+
+to convert a an api version use
+ k convert -f pod.yaml --output-version apps/v1 
+-----------------------------------------
+
+CRD:custom resources and custom controllers
+
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  # name must match the spec fields below, and be in the form: <plural>.<group>
+  name: crontabs.stable.example.com
+spec:
+  # group name to use for REST API: /apis/<group>/<version>
+  group: stable.example.com
+  # list of versions supported by this CustomResourceDefinition
+  versions:
+    - name: v1
+      # Each version can be enabled/disabled by Served flag.
+      served: true
+      # One and only one version must be marked as the storage version.
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                cronSpec:
+                  type: string
+                image:
+                  type: string
+                replicas:
+                  type: integer
+  # either Namespaced or Cluster
+  scope: Namespaced
+  names:
+   # plural name to be used in the URL: /apis/<group>/<version>/<plural>
+    plural: crontabs
+    # singular name to be used as an alias on the CLI and for display
+    singular: crontab
+    # kind is normally the CamelCased singular type. Your resource manifests use this.
+    kind: CronTab
+    # shortNames allow shorter string to match your resource on the CLI
+    shortNames:
+    - ct
+
+
+kubernetes operators manages a specific application such as installing, restoring, back ups 
+
+to deploy an operator we need to install OLM operator lifecycle manager
+
+canary : we deploy old version and route small % of traffic and large % to new version. if tests goes well then we'll update to 
+        new versions once using rolling update 
+
+we can reduce the traffic by simply decreasing the no.of replicas of pod to as min as possible
+
+Helm : helm is a packagemanager which contains everything to run an application with a single command
+for ex helm install wordpress ... (it creates pods, services, deployments, secrets etc)
+
+sudo snap install helm --classic
+
+----> use touch command to create a file  
+
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-sec-kff3345
+  namespace: default
+spec:
+  securityContext:
+    runAsUser: 0
+  containers:
+  - command:
+    - sleep
+    - "4800"
+    image: ubuntu
+    name: ubuntu
+    securityContext:
+     capabilities:
+        add: ["SYS_TIME"]
+
+
+persistentvolume :
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-analytics
+spec:
+  capacity:
+    storage: 100Mi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteMany
+  hostPath:
+      path: /pv/data-analytics
+
+
+
+to check the connectivity of a networkpolicy
+
+kubectl exec -it podname -- sh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
